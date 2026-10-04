@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ระบบจดจำภาษามือ</title>
+    <link rel="stylesheet" href="/static/css/model.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M12 22V11.5a2.5 2.5 0 0 1 5 0V19" stroke="#1F8A82" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M17 19v-3.2a2.3 2.3 0 0 1 4.6 0V19" stroke="#1F8A82" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M21.6 19v-2.6a2.2 2.2 0 0 1 4.4 0V19" stroke="#1F8A82" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M26 19v-1.6a2 2 0 0 1 4 0V23c0 5-3.6 9-9 9h-1.6c-3 0-4.9-1-6.7-3.1L8 22.7c-.9-1-.8-2.4.2-3.2.9-.7 2.2-.6 3 .2l2.8 2.7" stroke="#1F8A82" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">ทำนายผล</span>
+      </div>
+      <a href="/" class="btn-back">คลังคำศัพท์</a>
+    </div>
+  </header>
+<body>
+    <div class="container">
+        <h1>ระบบจดจำภาษามือ <small></small></h1>
+        
+        <div class="main-box">
+            <video id="input_video"></video>
+            <canvas id="output_canvas" width="640" height="480"></canvas>
+            
+            <div class="info-panel">
+                <div class="result-card">
+                    <span class="label">ทายว่า:</span>
+                    <span id="word" class="value">-</span>
+                </div>
+                <div class="result-card">
+                    <span class="label">ความมั่นใจ:</span>
+                    <span id="conf" class="value">0</span><span class="unit">%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>© 2026 มือสื่อสาร - ระบบตรวจจับภาษามือไทยด้วย AI</p>
+    </div>
+  </footer>
+
+   <script> window.MODEL_TYPE = 'lstm'; </script>
+<script src="{{ url_for('static', filename='js/model.js') }}"></script>
+</body>
+</html>

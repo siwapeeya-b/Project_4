@@ -1,0 +1,6 @@
+flask
+flask-socketio
+tensorflow-cpu
+numpy
+eventlet
+gunicorn
