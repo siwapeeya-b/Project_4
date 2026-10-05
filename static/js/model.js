@@ -13,7 +13,7 @@ const socket = io({
 });
 
 // ดึงค่า MODEL_TYPE ที่ตั้งไว้ในหน้า HTML (ถ้านึกไม่ออกให้ Default เป็น 'lstm')
-const CURRENT_MODEL_TYPE = window.MODEL_TYPE || 'lstm';
+const CURRENT_MODEL_TYPE = window.MODEL_TYPE || 'best_model';
 
 // 2. เช็กการเชื่อมต่อ Socket
 socket.on('connect', () => {

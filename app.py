@@ -1,13 +1,27 @@
 import os
 import json
 import h5py
+import threading
 import numpy as np
 import tensorflow as tf
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+# ระบุ async_mode='threading' ตรงๆ แทนการให้ auto-detect
+# (ปลอดภัยกว่าเวลาใช้ร่วมกับ TensorFlow ซึ่งมักขัดแย้งกับ eventlet/gevent)
+# เพิ่ม ping_timeout ให้มี buffer มากขึ้น เผื่อ predict หน่วงเล็กน้อย จะได้ไม่หลุดง่าย
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    ping_timeout=60,
+    ping_interval=25,
+)
+
+# TensorFlow .predict() ไม่ thread-safe 100% เวลามีหลาย session เรียกพร้อมกันบนโมเดลเดียวกัน
+# ใช้ lock กันไม่ให้สอง thread เรียก predict() บนโมเดลตัวเดียวกันพร้อมกัน
+predict_lock = threading.Lock()
 
 actions = np.array([
     'ป่วย', 'รัก', 'เสียใจ', 'กิน', 'ให้กำลังใจ', 
@@ -87,14 +101,10 @@ def load_keras3_h5_model(h5_path):
     return model
 # =========================================================================
 
-# 3. โหลดโมเดลทั้ง 3 ชุด
-print("กำลังโหลดโมเดล")
+# โหลดโมเดลทั้ง 
 models = {}
-
 model_files = {
-    'lstm': 'best_model_dropout0.2_epoch10.h5',
-    'cnn_lstm': 'CNN_LSTM_Model.h5',
-    'deep_bilstm': 'CNN_LSTM_Deep.h5'
+    'lstm': 'best_model_dropout0.2_epoch10.h5'
 }
 
 for name, path in model_files.items():
@@ -113,6 +123,17 @@ for name, path in model_files.items():
     else:
         print(f"หาไฟล์โมเดล {full_path} ไม่เจอ! โปรดเช็กว่าวางไฟล์ชื่อ '{path}' ไว้ถูกที่หรือไม่")
 
+# Warm-up โมเดล: เรียก predict() หลอกๆ ครั้งหนึ่งตอน start server
+# เพื่อให้การ trace graph/เตรียม kernel เกิดขึ้นตอนนี้ ไม่ใช่ตอนผู้ใช้คนแรกทำนายจริง
+# (ไม่งั้นการทำนายครั้งแรกสุดของทุกโมเดลจะช้าผิดปกติ ดูเหมือนค้าง)
+_dummy_input = np.zeros((1, 30, 226), dtype=np.float32)
+for name, model in models.items():
+    try:
+        model.predict(_dummy_input, verbose=0)
+        print(f"Warm-up โมเดล {name} เรียบร้อยแล้ว")
+    except Exception as e:
+        print(f"Warm-up โมเดล {name} ล้มเหลว: {e}")
+
 user_data = {}
 # --- Routes ---
 @app.route('/')
@@ -130,7 +151,8 @@ def handle_connect():
     user_data[request.sid] = {
         'sequence': [],
         'predictions': [],
-        'sentence': []
+        'sentence': [],
+        'is_predicting': False,  # กันไม่ให้ session เดียวกันยิง predict ซ้อนกันจนเฟรมกองค้าง
     }
 
 @socketio.on('disconnect')
@@ -142,7 +164,7 @@ def handle_disconnect():
 def handle_prediction(data):
     sid = request.sid
     if sid not in user_data:
-        user_data[sid] = {'sequence': [], 'predictions': [], 'sentence': []}
+        user_data[sid] = {'sequence': [], 'predictions': [], 'sentence': [], 'is_predicting': False}
 
     if isinstance(data, dict):
         raw_keypoints = data.get('keypoints', [])
@@ -158,45 +180,83 @@ def handle_prediction(data):
     user_state['sequence'].append(norm_keypoints)
     user_state['sequence'] = user_state['sequence'][-30:] # รักษาขนาดบัฟเฟอร์ 30 เฟรม
 
-    if len(user_state['sequence']) == 30:
-        target_model = models.get(model_type)
-        
-        if target_model:
-            input_data = np.expand_dims(user_state['sequence'], axis=0)
-            
+    # ทำนายเฉพาะตอนบัฟเฟอร์เต็ม และ session นี้ไม่มีการทำนายค้างอยู่ก่อนแล้ว
+    # (ถ้าไม่เช็ค is_predicting จะยิง predict() ทุกเฟรมที่เข้ามาซ้อนกันเรื่อยๆ จนค้าง)
+    if len(user_state['sequence']) == 30 and not user_state['is_predicting']:
+        if model_type in models:
+            user_state['is_predicting'] = True
+            sequence_snapshot = list(user_state['sequence'])  # ก็อปปี้ไว้ก่อนส่งเข้า background task
+            socketio.start_background_task(
+                run_prediction, sid, sequence_snapshot, model_type
+            )
+
+
+def run_prediction(sid, sequence, model_type):
+    """รันบน background thread แยกจาก thread ที่คุย socket โดยตรง
+    เพื่อไม่ให้การทำนาย (ซึ่งอาจใช้เวลาหลาย 100ms) ไปบล็อกการตอบ ping/pong
+    ของ client จนหลุดการเชื่อมต่อ"""
+    user_state = user_data.get(sid)
+    if user_state is None:
+        return  # client หลุดไปแล้วระหว่างรอคิว
+
+    target_model = models.get(model_type)
+    if target_model is None:
+        user_state['is_predicting'] = False
+        return
+
+    try:
+        input_data = np.expand_dims(sequence, axis=0)
+        # lock กันสอง session เรียก predict() พร้อมกันบนโมเดลตัวเดียวกัน
+        with predict_lock:
             res = target_model.predict(input_data, verbose=0)[0]
-            predicted_idx = np.argmax(res)
-            confidence = float(res[predicted_idx])
-            if confidence >= THRESHOLD:
-                user_state['predictions'].append(predicted_idx)
-                user_state['predictions'] = user_state['predictions'][-10:] # เก็บ 10 ผลลัพธ์ล่าสุด
-                
-                # ถ้าโมเดลทายได้คำเดิมซ้ำกันเกิน 6 ใน 10 เฟรมล่าสุด ให้ถือว่าเป็นคำที่นิ่งแล้ว
-                if user_state['predictions'].count(predicted_idx) >= 4:
-                    detected_word = actions[predicted_idx]
-                    
-                    # อัปเดตใส่ Sentence (ไม่ใส่คำเดิมซ้ำติดกัน)
-                    if len(user_state['sentence']) > 0:
-                        if detected_word != user_state['sentence'][-1]:
-                            user_state['sentence'].append(detected_word)
-                    else:
+
+        predicted_idx = np.argmax(res)
+        confidence = float(res[predicted_idx])
+
+        if confidence >= THRESHOLD:
+            user_state['predictions'].append(predicted_idx)
+            user_state['predictions'] = user_state['predictions'][-10:] # เก็บ 10 ผลลัพธ์ล่าสุด
+
+            # ถ้าโมเดลทายได้คำเดิมซ้ำกันเกิน 6 ใน 10 เฟรมล่าสุด ให้ถือว่าเป็นคำที่นิ่งแล้ว
+            if user_state['predictions'].count(predicted_idx) >= 4:
+                detected_word = actions[predicted_idx]
+
+                # อัปเดตใส่ Sentence (ไม่ใส่คำเดิมซ้ำติดกัน)
+                if len(user_state['sentence']) > 0:
+                    if detected_word != user_state['sentence'][-1]:
                         user_state['sentence'].append(detected_word)
                 else:
-                    detected_word = "..."
+                    user_state['sentence'].append(detected_word)
             else:
                 detected_word = "..."
-                
-            # จำกัดความยาวประโยคสูงสุด 5 คำ
-            if len(user_state['sentence']) > 5:
-                user_state['sentence'] = user_state['sentence'][-5:]
-            emit('response', {
-                'detected': detected_word,
-                'confidence': round(confidence * 100, 2),
-                'sentence': user_state['sentence'],
-                'probabilities': (res * 100).round(2).tolist(),
-                'actions': actions.tolist(),
-                'model_used': model_type
-            })
+        else:
+            detected_word = "..."
+
+        # จำกัดความยาวประโยคสูงสุด 5 คำ
+        if len(user_state['sentence']) > 5:
+            user_state['sentence'] = user_state['sentence'][-5:]
+
+        # เรียก emit แบบนอก request context ต้องระบุ to=sid เสมอ
+        socketio.emit('response', {
+            'detected': detected_word,
+            'confidence': round(confidence * 100, 2),
+            'sentence': user_state['sentence'],
+            'probabilities': (res * 100).round(2).tolist(),
+            'actions': actions.tolist(),
+            'model_used': model_type
+        }, to=sid)
+    finally:
+        if user_state is not None:
+            user_state['is_predicting'] = False
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True, port=5000)
+    # Hugging Face Spaces (Docker SDK) กำหนดพอร์ตผ่าน env var PORT (ค่า default คือ 7860)
+    # ต้อง bind host="0.0.0.0" ไม่งั้น container จะมองไม่เห็น service จากภายนอก
+    port = int(os.environ.get("PORT", 5000))
+    socketio.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        debug=False,
+        allow_unsafe_werkzeug=True,  # จำเป็นสำหรับรัน Werkzeug dev server ใน container
+    )
