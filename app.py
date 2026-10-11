@@ -104,7 +104,7 @@ def load_keras3_h5_model(h5_path):
 # โหลดโมเดลทั้ง 
 models = {}
 model_files = {
-    'lstm': 'best_model_dropout0.2_epoch10.h5'
+    'best_model': 'best_model_dropout0.2_epoch20.h5'
 }
 
 for name, path in model_files.items():
@@ -168,10 +168,10 @@ def handle_prediction(data):
 
     if isinstance(data, dict):
         raw_keypoints = data.get('keypoints', [])
-        model_type = data.get('model_type', 'lstm')
+        model_type = data.get('model_type', 'best_model')
     else:
         raw_keypoints = data
-        model_type = 'lstm'
+        model_type = 'best_model'
     
     norm_keypoints = normalize_frame_keypoints(raw_keypoints)
     

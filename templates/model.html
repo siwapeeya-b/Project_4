@@ -28,8 +28,10 @@
   </header>
 <body>
     <div class="container">
-        <h1>ระบบจดจำภาษามือ <small></small></h1>
-        
+<section class="intro">
+      <h1>ทดสอบท่าภาษามือไทย</h1>
+      <p class="intro-copy">โปรดเว้นระยะห่างจากตัวกล้อง เพื่อให้กล้องจับพิกัด อยู่ในพื้นที่ที่มีแสงสว่างเพียงพอ</p>
+    </section>
         <div class="main-box">
             <video id="input_video"></video>
             <canvas id="output_canvas" width="640" height="480"></canvas>
@@ -49,11 +51,11 @@
 
   <footer class="site-footer">
     <div class="wrap">
-      <p>© 2026 มือสื่อสาร - ระบบตรวจจับภาษามือไทยด้วย AI</p>
+      <p>© 2026 มือสื่อสาร - ระบบจดจำภาษามือไทย</p>
     </div>
   </footer>
 
-   <script> window.MODEL_TYPE = 'lstm'; </script>
+   <script> window.MODEL_TYPE = 'best_model'; </script>
 <script src="{{ url_for('static', filename='js/model.js') }}"></script>
 </body>
 </html>

@@ -52,24 +52,13 @@ ul.nav-bar li a.active {
 }
 
 .container {
-    text-align: center;
-    width: 90%;
-    max-width: 800px;
+  text-align: center;
+  width: 100%;
+  max-width: 800px;
   margin: 0 auto 40px;
 }
 
-h1 {
-  color: var(--ink);
-    margin-bottom: 20px;
-}
 
-.main-box {
-  background: var(--card-soft);
-    padding: 20px;
-  border: 1px solid rgba(218, 210, 190, 0.45);
-  border-radius: var(--radius-card);
-  box-shadow: 0 16px 32px rgba(18, 24, 31, 0.16);
-}
 
 #output_canvas {
     width: 100%;
@@ -92,9 +81,8 @@ h1 {
 }
 
 .result-card {
-  background: var(--card);
+  background: var(--media-placeholder);
     padding: 15px 25px;
-  border: 1px solid rgba(218, 210, 190, 0.3);
   border-radius: var(--radius-input);
     flex: 1;
 }
@@ -102,14 +90,14 @@ h1 {
 .label {
     display: block;
     font-size: 0.9rem;
-    color: #B9C5C7;
+    color: #ffffff;
     margin-bottom: 5px;
 }
 
 .value {
     font-size: 1.8rem;
     font-weight: bold;
-    color: #8ED3C8;
+    color:#ffffff;
 }
 
 .unit {
@@ -192,21 +180,22 @@ body {
 .intro {
   padding: 56px 0 28px;
   max-width: 640px;
+  margin: 0% auto;
 }
 
 .intro h1 {
   margin: 0 0 16px;
-  font-size: clamp(32px, 5vw, 46px);
+  font-size: clamp(28px, 4vw, 38px);
   line-height: 1.15;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 
 .intro-copy {
-  margin: 0;
+  margin: 0 auto;
   font-size: 16px;
   color: var(--ink-soft);
-  max-width: 54ch;
+ 
 }
 
 /* ---------- controls ---------- */
